@@ -290,7 +290,10 @@ function! w3m#Open(mode, ...)
   endif
 
   "create command
-  let cols = winwidth(0) - &numberwidth
+  let cols = get(g:, 'w3m#line_width')
+  if cols == 0
+    let cols = winwidth(0) - &numberwidth
+  endif
   let cmdline = s:create_command(url, cols)
   call s:message( strpart('open ' . url, 0, cols - s:message_adjust) )
 
@@ -552,78 +555,78 @@ function! s:analizeOutputs(output_lines)
 endfunction
 
 function! s:resolvTagType(tag)
-  if stridx(a:tag, '<') == 0
-    if stridx(a:tag, '/>') >= 0 && match(a:tag, '=\a') == -1
-      return s:TAG_BOTH
-    elseif stridx(a:tag, '</') == 0
-      return s:TAG_END
-    else
-      return s:TAG_START
+    if a:tag[0:0] ==# '<'
+        if a:tag[1:1] ==# '/'
+            return s:TAG_END
+        elseif stridx(a:tag, '/>') > 0 && match(a:tag, '=\a') == -1
+            return s:TAG_BOTH
+        else
+            return s:TAG_START
+        endif
     endif
-  endif
-  return s:TAG_UNKNOWN
+    return s:TAG_UNKNOWN
 endfunction
 
 function! s:analizeTag(tag, attr)
-  let tagname_e = stridx(a:tag, ' ') - 1
-  let taglen = strlen(a:tag)
-  if tagname_e < 0
-    if a:tag[1:1] == '/'
-      return tolower(strpart(a:tag, 2, taglen-3))
-    else
-      return tolower(strpart(a:tag, 1, taglen-2))
-    endif
-  endif
-
-  let tagname = tolower(strpart(a:tag, 1, tagname_e))
-  let idx = tagname_e + 2
-  while 1
-    if idx >= taglen
-      break
-    endif
-
-    let na = stridx(a:tag, ' ', idx)
-    let eq = stridx(a:tag, '=', idx)
-    if eq == -1 || eq > na
-      if na == -1
-        if eq == -1
-          let key = strpart(a:tag, idx, taglen-idx-1)
-          if key != ""
-            let a:attr[tolower(key)] = ''
-          endif
-          break
+    let tagname_e = stridx(a:tag, ' ') - 1
+    let taglen = strlen(a:tag)
+    if tagname_e < 0
+        if a:tag[1:1] == '/'
+            return tolower(strpart(a:tag, 2, taglen-3))
+        else
+            return tolower(strpart(a:tag, 1, taglen-2))
         endif
-        let na = taglen - 1
-      else " no value key
-        let key = strpart(a:tag, idx, na-idx)
-        if key != ""
-          let a:attr[tolower(key)] = ''
+    endif
+
+    let tagname = tolower(strpart(a:tag, 1, tagname_e))
+    let idx = tagname_e + 2
+    while 1
+        if idx >= taglen
+            break
+        endif
+
+        let na = stridx(a:tag, ' ', idx)
+        let eq = stridx(a:tag, '=', idx)
+        if eq == -1 || eq > na
+            if na == -1
+                if eq == -1
+                    let key = strpart(a:tag, idx, taglen-idx-1)
+                    if key != ""
+                        let a:attr[tolower(key)] = ''
+                    endif
+                    break
+                endif
+                let na = taglen - 1
+            else " no value key
+                let key = strpart(a:tag, idx, na-idx)
+                if key != ""
+                    let a:attr[tolower(key)] = ''
+                endif
+                let idx = na + 1
+                continue
+            endif
+        endif
+
+        let vs = eq+1
+        if a:tag[vs] == '"' || a:tag[vs] == "'"
+            let ee = stridx(a:tag, a:tag[vs], vs+1) " end quate
+            let vs += 1
+            let ve = ee - 1
+            let na = ee + 1
+        else
+            let ve = na - 1
+        endif
+        let ks = idx
+        let ke = eq - 1
+
+        if ke >= ks
+            let keyname = strpart(a:tag, ks, ke-ks+1)
+            let a:attr[tolower(keyname)] = s:decordeEntRef(strpart(a:tag, vs, ve-vs+1))
         endif
         let idx = na + 1
-        continue
-      endif
-    endif
+    endwhile
 
-    let vs = eq+1
-    if a:tag[vs] == '"' || a:tag[vs] == "'"
-      let ee = stridx(a:tag, a:tag[vs], vs+1) " end quate
-      let vs += 1
-      let ve = ee - 1
-      let na = ee + 1
-    else
-      let ve = na - 1
-    endif
-    let ks = idx
-    let ke = eq - 1
-
-    let keyname = strpart(a:tag, ks, ke-ks+1)
-    if strlen(keyname) > 0
-      let a:attr[tolower(keyname)] = s:decordeEntRef(strpart(a:tag, vs, ve-vs+1))
-    endif
-    let idx = na + 1
-  endwhile
-
-  return tagname
+    return tagname
 endfunction
 
 function! s:prepare_buffer()
@@ -700,10 +703,10 @@ endfunction
 
 function! s:default_highligh()
   if !hlexists('w3mBold')
-    hi w3mBold gui=bold
+    hi w3mBold cterm=bold gui=bold
   endif
   if !hlexists('w3mUnderline')
-    hi w3mUnderline gui=underline
+    hi w3mUnderline cterm=underline gui=underline
   endif
   if !hlexists('w3mInput')
     highlight! link w3mInput String
@@ -712,13 +715,19 @@ function! s:default_highligh()
     highlight! link w3mSubmit Special
   endif
   if !hlexists('w3mLink')
-    highlight! link w3mLink Function
+    hi w3mLink ctermfg=4 guifg=#40ffff
+  endif
+  if !hlexists('w3mLinkBold')
+    hi w3mLinkBold ctermfg=4 guifg=#40ffff cterm=bold gui=bold
   endif
   if !hlexists('w3mAnchor')
-    highlight! link w3mAnchor Label
+    hi w3mAnchor ctermfg=2 gui=bold guifg=#ffff60
+  endif
+  if !hlexists('w3mAnchorBold')
+    hi w3mAnchorBold ctermfg=2 gui=bold guifg=#ffff60 cterm=bold
   endif
   if !hlexists('w3mLinkHover')
-    highlight! link w3mLinkHover SpecialKey
+    highlight! link w3mLinkHover vimGroup
   endif
   if !hlexists('w3mHitAHint')
     highlight! link w3mHitAHint Question
@@ -735,6 +744,29 @@ function! s:applySyntax()
   let input_s = -1
   let input_highlight = ""
   let link_anchor = 0
+  let bold_matches = {}
+  for tag in b:tag_list
+    if tag.tagname ==? 'b'
+      if bold_s == -1 && tag.type == s:TAG_START
+        if tag.col > 0
+          let bold_s = tag.col -1
+        else
+          let bold_s = 0
+        endif
+      elseif bold_s != -1 && tag.type == s:TAG_END
+        let bold_e = tag.col
+        call matchadd('w3mBold', '\%>'.bold_s.'c\%<'.bold_e.'c\%'.tag.line.'l')
+        let k = string(tag.line)
+        if has_key(bold_matches, k)
+            call add(bold_matches[k], [bold_s, bold_e])
+        else
+            let bold_matches[k] = [bold_s, bold_e]
+        endif
+        let bold_s = -1
+      endif
+    endif
+  endfor
+
   for tag in b:tag_list
     if link_s == -1 && tag.tagname ==? 'a' && tag.type == s:TAG_START
       if tag.col > 0
@@ -747,24 +779,23 @@ function! s:applySyntax()
       endif
     elseif link_s != -1 && tag.tagname ==? 'a' && tag.type == s:TAG_END
       let link_e = tag.col
-      if link_anchor == 1
-        call matchadd('w3mAnchor', '\%>'.link_s.'c\%<'.link_e.'c\%'.tag.line.'l')
+      let bold_match = get(bold_matches, string(tag.line), [])
+
+      if !empty(bold_match) && link_s >= bold_match[0] && link_e <= bold_match[1]
+        if link_anchor == 1
+          call matchadd('w3mAnchorBold', '\%>'.link_s.'c\%<'.link_e.'c\%'.tag.line.'l')
+        else
+          call matchadd('w3mLinkBold', '\%>'.link_s.'c\%<'.link_e.'c\%'.tag.line.'l')
+        endif
       else
-        call matchadd('w3mLink', '\%>'.link_s.'c\%<'.link_e.'c\%'.tag.line.'l')
+        if link_anchor == 1
+          call matchadd('w3mAnchor', '\%>'.link_s.'c\%<'.link_e.'c\%'.tag.line.'l')
+        else
+          call matchadd('w3mLink', '\%>'.link_s.'c\%<'.link_e.'c\%'.tag.line.'l')
+        endif
       endif
       let link_anchor = 0
       let link_s = -1
-
-    elseif bold_s == -1 && tag.tagname ==? 'b' && tag.type == s:TAG_START
-      if tag.col > 0
-        let bold_s = tag.col -1
-      else
-        let bold_s = 0
-      endif
-    elseif bold_s != -1 && tag.tagname ==? 'b' && tag.type == s:TAG_END
-      let bold_e = tag.col
-      call matchadd('w3mBold', '\%>'.bold_s.'c\%<'.bold_e.'c\%'.tag.line.'l')
-      let bold_s = -1
 
     elseif underline_s == -1 && tag.tagname ==? 'u' && tag.type == s:TAG_START
       if tag.col > 0
@@ -1111,6 +1142,10 @@ function! s:create_command(url, cols)
   if g:user_agent != ''
     call add(command_list, '-o user_agent="' . g:user_agent . '"')
   endif
+  let tab_width = get(g:, 'w3m#tab_width', 0)
+  if tab_width > 0
+    call add(command_list, '-t ' . tab_width)
+  endif
 
   call add(command_list, '"' . a:url . '"')
   let cmdline = join(command_list, ' ') . s:abandon_error
@@ -1378,27 +1413,33 @@ function! s:normalizeUrl(url)
 endfunction
 
 function! s:neglectNeedlessTags(output)
-  return substitute(a:output,'<[/]\{0,1\}\(_symbol\|_id\|intenal\|pre_int\|img_alt\|nobr\).\{-\}>','','g')
+  "return substitute(a:output,'<[/]\{0,1\}\(_symbol\|_id\|intenal\|pre_int\|img_alt\|nobr\).\{-\}>','','g')
+  return substitute(a:output,'<[/]\{0,1\}\(_symbol\|intenal\|pre_int\|img_alt\|nobr\).\{-\}>','','g')
 endfunction
 
 function! s:decordeEntRef(str)
-  let str = a:str
-  let str = substitute(str, '&quot;',   '"', 'g')
-  let str = substitute(str, '&#40;',    '(', 'g')
-  let str = substitute(str, '&#41;',    ')', 'g')
-  let str = substitute(str, '&laquo;',  '≪', 'g')
-  let str = substitute(str, '&raquo;',  '≫', 'g')
-  let str = substitute(str, '&lt;',     '<', 'g')
-  let str = substitute(str, '&gt;',     '>', 'g')
-  let str = substitute(str, '&amp;',    '\&','g')
-  let str = substitute(str, '&yen;',    '\\','g')
-  let str = substitute(str, '&cent;',   '￠','g')
-  let str = substitute(str, '&copy;',   'c', 'g')
-  let str = substitute(str, '&middot;', '・','g')
-  let str = substitute(str, '&mdash;',  '―','g')
-  let str = substitute(str, '&ndash;',  '―','g')
-  let str = substitute(str, '&apos;',   "'", 'g')
-  return    substitute(str, '&nbsp;',   ' ', 'g')
+    if len(matchstr(a:str, '&[ql#rgaycmn]')) == 0
+        return a:str
+    endif
+
+    let str = a:str
+    let str = substitute(str, '&quot;',   '"', 'g')
+    let str = substitute(str, '&#40;',    '(', 'g')
+    let str = substitute(str, '&#41;',    ')', 'g')
+    let str = substitute(str, '&laquo;',  '≪', 'g')
+    let str = substitute(str, '&raquo;',  '≫', 'g')
+    let str = substitute(str, '&lt;',     '<', 'g')
+    let str = substitute(str, '&gt;',     '>', 'g')
+    let str = substitute(str, '&amp;',    '\&','g')
+    let str = substitute(str, '&yen;',    '\\','g')
+    let str = substitute(str, '&cent;',   '￠','g')
+    let str = substitute(str, '&copy;',   'c', 'g')
+    let str = substitute(str, '&middot;', '・','g')
+    let str = substitute(str, '&mdash;',  '―','g')
+    let str = substitute(str, '&ndash;',  '―','g')
+    let str = substitute(str, '&apos;',   "'", 'g')
+    let str = substitute(str, '&#xb6;',   "ｶ", 'g')
+    return    substitute(str, '&nbsp;',   ' ', 'g')
 endfunction
 
 function! s:message(msg)
@@ -1437,13 +1478,18 @@ function! s:is_download_target(href)
 endfunction
 
 function! s:moveToAnchor(href)
-  let aname = a:href[1:]
-  for tag in b:tag_list
-    if has_key(tag.attr, 'name') && tag.attr.name ==? aname
-      call cursor(tag.line, tag.col) 
-      break
-    endif
-  endfor
+    let aname = a:href[1:]
+    for tag in b:tag_list
+        if get(tag.attr, 'id', "") ==? aname
+            call cursor(tag.line, tag.col)
+            break
+        endif
+
+        if get(tag.attr, 'name', "") ==? aname
+            call cursor(tag.line, tag.col)
+            break
+        endif
+    endfor
 endfunction
 
 function! s:is_anchor(href)
