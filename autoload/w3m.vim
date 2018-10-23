@@ -486,9 +486,11 @@ function! s:analizeOutputs(output_lines)
   let b:tag_list = []
   let b:anchor_list = []
   let b:form_list = []
+  let b:a_list = []
+  let b:bold_list = []
+  let b:underline_list = []
 
   let cline = 1
-  let tnum  = 0
   for line in a:output_lines
     let analaized_line = ''
     let [lidx, ltidx, gtidx] = [ 0, -1, -1 ]
@@ -532,11 +534,15 @@ function! s:analizeOutputs(output_lines)
               endif
               unlet line_anchor_item
             end
-          endif
-          let tnum += 1
-          if stridx(tname,'input') == 0
+            call add(b:a_list, item)
+          elseif tname ==# 'b'
+            call add(b:bold_list, item)
+          elseif tname ==# 'u'
+            call add(b:underline_list, item)
+          elseif stridx(tname,'input') == 0
             call add(b:form_list, item)
           endif
+
           let lidx = gtidx + 1
         else
           let analaized_line .= s:decordeEntRef(strpart(line, lidx))
@@ -745,30 +751,28 @@ function! s:applySyntax()
   let input_highlight = ""
   let link_anchor = 0
   let bold_matches = {}
-  for tag in b:tag_list
-    if tag.tagname ==? 'b'
-      if bold_s == -1 && tag.type == s:TAG_START
-        if tag.col > 0
-          let bold_s = tag.col -1
-        else
-          let bold_s = 0
-        endif
-      elseif bold_s != -1 && tag.type == s:TAG_END
-        let bold_e = tag.col
-        call matchadd('w3mBold', '\%>'.bold_s.'c\%<'.bold_e.'c\%'.tag.line.'l')
-        let k = string(tag.line)
-        if has_key(bold_matches, k)
-            call add(bold_matches[k], [bold_s, bold_e])
-        else
-            let bold_matches[k] = [bold_s, bold_e]
-        endif
-        let bold_s = -1
+  for tag in b:bold_list
+    if bold_s == -1 && tag.type == s:TAG_START
+      if tag.col > 0
+        let bold_s = tag.col -1
+      else
+        let bold_s = 0
       endif
+    elseif bold_s != -1 && tag.type == s:TAG_END
+      let bold_e = tag.col
+      call matchadd('w3mBold', '\%>'.bold_s.'c\%<'.bold_e.'c\%'.tag.line.'l')
+      let k = string(tag.line)
+      if has_key(bold_matches, k)
+          call add(bold_matches[k], [bold_s, bold_e])
+      else
+          let bold_matches[k] = [bold_s, bold_e]
+      endif
+      let bold_s = -1
     endif
   endfor
 
-  for tag in b:tag_list
-    if link_s == -1 && tag.tagname ==? 'a' && tag.type == s:TAG_START
+  for tag in b:a_list
+    if link_s == -1 && tag.type == s:TAG_START
       if tag.col > 0
         let link_s = tag.col -1
       else
@@ -777,7 +781,7 @@ function! s:applySyntax()
       if has_key(tag.attr, 'href') && tag.attr.href[0] == '#'
         let link_anchor = 1
       endif
-    elseif link_s != -1 && tag.tagname ==? 'a' && tag.type == s:TAG_END
+    elseif link_s != -1 && tag.type == s:TAG_END
       let link_e = tag.col
       let bold_match = get(bold_matches, string(tag.line), [])
 
@@ -796,19 +800,25 @@ function! s:applySyntax()
       endif
       let link_anchor = 0
       let link_s = -1
+    endif
+  endfor
 
-    elseif underline_s == -1 && tag.tagname ==? 'u' && tag.type == s:TAG_START
+  for tag in b:underline_list
+    if underline_s == -1 && tag.type == s:TAG_START
       if tag.col > 0
         let underline_s = tag.col -1
       else
         let underline_s = 0
       endif
-    elseif underline_s != -1 && tag.tagname ==? 'u' && tag.type == s:TAG_END
+    elseif underline_s != -1 && tag.type == s:TAG_END
       let underline_e = tag.col
       call matchadd('w3mUnderline', '\%>'.underline_s.'c\%<'.underline_e.'c\%'.tag.line.'l')
       let underline_s = -1
+    endif
+  endfor
 
-    elseif input_s == -1 && tag.tagname ==? 'input_alt' && tag.type == s:TAG_START
+  for tag in b:form_list
+    if input_s == -1 && tag.tagname ==? 'input_alt' && tag.type == s:TAG_START
       if s:is_tag_input_image_submit(tag)
         let input_highlight = 'w3mSubmit'
       else
